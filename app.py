@@ -1,4 +1,3 @@
-print("hello project")
 import streamlit as st
 import pandas as pd
 import qrcode
@@ -16,12 +15,20 @@ st.set_page_config(
 if 'certificates' not in st.session_state:
     st.session_state['certificates'] = []
 
+if 'payments' not in st.session_state:
+    st.session_state['payments'] = []
+
 # Header Section
 st.title("⚖️ Online Verification System for Weighing & Measuring Instruments")
 st.caption("Department of Consumer Affairs (DoCA) | Legal Metrology Act, 2009")
 
 # Navigation Tabs
-tab1, tab2, tab3 = st.tabs(["📋 Issue Certificate (LMO)", "🔍 Consumer Verification Portal", "📊 Registry Dashboard"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📋 Issue Certificate (LMO)", 
+    "🔍 Consumer Verification Portal", 
+    "📊 Registry Dashboard",
+    "💳 Fee Payment Gateway"
+])
 
 # ---------------------------------------------------------
 # TAB 1: LMO CERTIFICATE ISSUANCE
@@ -153,4 +160,75 @@ with tab3:
         m2.metric("Approved & Stamped", total_stamped)
         m3.metric("Rejected / Defective", total_rejected)
     else:
-        st.info("No records present in the system yet. Issue certificates using the LMO tab.")
+        st.info("No records present in the system yet. Issue certificates to view dashboard analytics.")
+
+# ---------------------------------------------------------
+# TAB 4: INSPECTION FEE PAYMENT GATEWAY (MOCK)
+# ---------------------------------------------------------
+with tab4:
+    st.header("Legal Metrology Stamping & Inspection Fee Portal")
+    st.info("Pay mandatory government verification fees online to receive verification stamping.")
+
+    pay_col1, pay_col2 = st.columns(2)
+
+    with pay_col1:
+        st.subheader("Fee Breakdown")
+        applicant_name = st.text_input("Trader / Business Name", placeholder="e.g., Apex Retail Solutions")
+        cert_num = st.text_input("Application / Certificate Reference ID", placeholder="e.g., LMO-20260908")
+        fee_type = st.selectbox("Verification Fee Category", [
+            "Commercial Electronic Scale (₹500)",
+            "Fuel Dispenser Inspection (₹2,000)",
+            "Industrial Flow Meter (₹5,000)",
+            "Annual Renewal Fee (₹1,000)"
+        ])
+        
+        amounts = {
+            "Commercial Electronic Scale (₹500)": 500,
+            "Fuel Dispenser Inspection (₹2,000)": 2000,
+            "Industrial Flow Meter (₹5,000)": 5000,
+            "Annual Renewal Fee (₹1,000)": 1000
+        }
+        payable_amount = amounts[fee_type]
+        st.markdown(f"### Total Payable Amount: **₹{payable_amount}**")
+
+    with pay_col2:
+        st.subheader("Payment Gateway")
+        pay_method = st.radio("Select Payment Method", ["UPI / QR Code", "Debit / Credit Card", "Net Banking"])
+
+        if pay_method == "UPI / QR Code":
+            st.write("Scan QR using BHIM, Paytm, Google Pay, or PhonePe:")
+            qr_pay_data = f"upi://pay?pa=gov.metrology@upi&pn=DoCA_Metrology&am={payable_amount}&cu=INR"
+            
+            p_qr = qrcode.QRCode(version=1, box_size=6, border=2)
+            p_qr.add_data(qr_pay_data)
+            p_qr.make(fit=True)
+            p_img = p_qr.make_image(fill_color="black", back_color="white")
+            
+            p_buf = BytesIO()
+            p_img.save(p_buf)
+            st.image(p_buf.getvalue(), width=180)
+
+        elif pay_method in ["Debit / Credit Card", "Net Banking"]:
+            st.text_input("Card Holder / Account Name", placeholder="Name as per Bank")
+            st.text_input("Card / Account Number", type="password", placeholder="XXXX XXXX XXXX XXXX")
+
+        if st.button("💳 Complete Fee Payment"):
+            if applicant_name and cert_num:
+                txn_id = f"TXN{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                st.session_state['payments'].append({
+                    "Transaction ID": txn_id,
+                    "Trader Name": applicant_name,
+                    "Reference ID": cert_num,
+                    "Amount": f"₹{payable_amount}",
+                    "Status": "SUCCESSFUL"
+                })
+                st.balloons()
+                st.success(f"✅ Payment Successful! Transaction ID: **{txn_id}**")
+                st.json({
+                    "Transaction ID": txn_id,
+                    "Amount Paid": f"₹{payable_amount}",
+                    "Payer": applicant_name,
+                    "Status": "PAID & VERIFIED"
+                })
+            else:
+                st.error("Please enter Trader Name and Reference ID before making payment.")
