@@ -31,7 +31,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # ---------------------------------------------------------
-# TAB 1: LMO CERTIFICATE ISSUANCE WITH GST & DOCUMENTS
+# TAB 1: LMO CERTIFICATE ISSUANCE WITH STRICT FILE VALIDATION
 # ---------------------------------------------------------
 with tab1:
     st.header("Legal Metrology Officer (LMO) Portal")
@@ -71,84 +71,107 @@ with tab1:
             status = st.radio("Verification Result", ["APPROVED & STAMPED", "REJECTED / DEFECTIVE"], horizontal=True)
 
         st.divider()
-        st.markdown("##### 📁 Mandatory Document Uploads")
+        st.markdown("##### 📁 Mandatory Document Uploads (Max Size: 100 KB per file)")
         d_col1, d_col2, d_col3 = st.columns(3)
         
         with d_col1:
-            invoice_file = st.file_uploader("Upload Purchase Bill / Invoice", type=["pdf", "png", "jpg", "jpeg"])
+            invoice_file = st.file_uploader("Upload Purchase Bill / Invoice*", type=["pdf", "png", "jpg", "jpeg"])
         with d_col2:
-            owner_photo = st.file_uploader("Upload Owner / Business Photo", type=["png", "jpg", "jpeg"])
+            owner_photo = st.file_uploader("Upload Owner / Business Photo*", type=["png", "jpg", "jpeg"])
         with d_col3:
-            digital_sig = st.file_uploader("Upload Officer / Owner Signature", type=["png", "jpg", "jpeg"])
+            digital_sig = st.file_uploader("Upload Officer / Owner Signature*", type=["png", "jpg", "jpeg"])
 
         submit_btn = st.form_submit_button("Generate Digital Certificate & QR Code")
 
     if submit_btn:
-        if trader_name and gstin and serial_number and lmo_name and mobile_no:
-            due_date = inspection_date + timedelta(days=validity_years * 365)
-            cert_id = f"LMO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Check mandatory text fields
+        missing_text = not (trader_name and gstin and serial_number and lmo_name and mobile_no and trader_location and email_id)
+        
+        # Check mandatory file uploads
+        missing_files = not (invoice_file and owner_photo and digital_sig)
 
-            # Save Record
-            record = {
-                "Certificate ID": cert_id,
-                "Trader Name": trader_name,
-                "GSTIN": gstin,
-                "Mobile": mobile_no,
-                "Email": email_id,
-                "Location": trader_location,
-                "Instrument": instrument_type,
-                "Serial Number": serial_number,
-                "LMO Name": lmo_name,
-                "Inspection Date": str(inspection_date),
-                "Next Verification Due": str(due_date),
-                "Status": status,
-                "Bill Attached": "Yes" if invoice_file else "No",
-                "Photo Attached": "Yes" if owner_photo else "No",
-                "Signature Attached": "Yes" if digital_sig else "No"
-            }
+        if missing_text:
+            st.error("⚠️ Please fill in all mandatory text fields.")
+        elif missing_files:
+            st.error("⚠️ All three documents (Purchase Bill, Owner Photo, and Signature) are mandatory.")
+        else:
+            # File Size Validation (100 KB = 100 * 1024 bytes = 102,400 bytes)
+            MAX_FILE_SIZE = 100 * 1024
+            
+            bill_valid = invoice_file.size <= MAX_FILE_SIZE
+            photo_valid = owner_photo.size <= MAX_FILE_SIZE
+            sig_valid = digital_sig.size <= MAX_FILE_SIZE
 
-            st.session_state['certificates'].append(record)
-            st.success(f"Certificate {cert_id} generated successfully!")
+            if not bill_valid or not photo_valid or not sig_valid:
+                overloaded = []
+                if not bill_valid:
+                    overloaded.append(f"Purchase Bill ({invoice_file.size / 1024:.1f} KB)")
+                if not photo_valid:
+                    overloaded.append(f"Owner Photo ({owner_photo.size / 1024:.1f} KB)")
+                if not sig_valid:
+                    overloaded.append(f"Signature ({digital_sig.size / 1024:.1f} KB)")
+                
+                st.error(f"❌ Upload failed! The following file(s) exceed the 100 KB size limit: {', '.join(overloaded)}. Please compress them and try again.")
+            else:
+                due_date = inspection_date + timedelta(days=validity_years * 365)
+                cert_id = f"LMO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-            # Generate QR Code
-            qr_data = f"CERTIFICATE VERIFIED\nID: {cert_id}\nTrader: {trader_name}\nGSTIN: {gstin}\nInstrument: {instrument_type}\nSerial: {serial_number}\nStatus: {status}\nDue Date: {due_date}"
-            qr = qrcode.QRCode(version=1, box_size=8, border=2)
-            qr.add_data(qr_data)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
+                # Save Record
+                record = {
+                    "Certificate ID": cert_id,
+                    "Trader Name": trader_name,
+                    "GSTIN": gstin,
+                    "Mobile": mobile_no,
+                    "Email": email_id,
+                    "Location": trader_location,
+                    "Instrument": instrument_type,
+                    "Serial Number": serial_number,
+                    "LMO Name": lmo_name,
+                    "Inspection Date": str(inspection_date),
+                    "Next Verification Due": str(due_date),
+                    "Status": status,
+                    "Bill Attached": "Verified (<100KB)",
+                    "Photo Attached": "Verified (<100KB)",
+                    "Signature Attached": "Verified (<100KB)"
+                }
 
-            buf = BytesIO()
-            img.save(buf)
-            byte_im = buf.getvalue()
+                st.session_state['certificates'].append(record)
+                st.success(f"✅ Certificate {cert_id} generated successfully!")
 
-            # Display Certificate Preview
-            st.divider()
-            st.subheader("Generated Digital Verification Certificate Preview")
-            c1, c2, c3 = st.columns([2, 1, 1])
-            with c1:
-                st.write(f"**Certificate Number:** {cert_id}")
-                st.write(f"**Trader / Business:** {trader_name} ({trader_location})")
-                st.write(f"**GSTIN:** {gstin}")
-                st.write(f"**Contact:** Phone: {mobile_no} | Email: {email_id}")
-                st.write(f"**Instrument Type:** {instrument_type} (SN: {serial_number})")
-                st.write(f"**Inspection Date:** {inspection_date} | **Due Date:** {due_date}")
-                st.write(f"**Inspecting Officer:** {lmo_name}")
-                if status == "APPROVED & STAMPED":
-                    st.success(f"STATUS: {status}")
-                else:
-                    st.error(f"STATUS: {status}")
+                # Generate QR Code
+                qr_data = f"CERTIFICATE VERIFIED\nID: {cert_id}\nTrader: {trader_name}\nGSTIN: {gstin}\nInstrument: {instrument_type}\nSerial: {serial_number}\nStatus: {status}\nDue Date: {due_date}"
+                qr = qrcode.QRCode(version=1, box_size=8, border=2)
+                qr.add_data(qr_data)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
 
-            with c2:
-                if owner_photo:
+                buf = BytesIO()
+                img.save(buf)
+                byte_im = buf.getvalue()
+
+                # Display Certificate Preview
+                st.divider()
+                st.subheader("Generated Digital Verification Certificate Preview")
+                c1, c2, c3 = st.columns([2, 1, 1])
+                with c1:
+                    st.write(f"**Certificate Number:** {cert_id}")
+                    st.write(f"**Trader / Business:** {trader_name} ({trader_location})")
+                    st.write(f"**GSTIN:** {gstin}")
+                    st.write(f"**Contact:** Phone: {mobile_no} | Email: {email_id}")
+                    st.write(f"**Instrument Type:** {instrument_type} (SN: {serial_number})")
+                    st.write(f"**Inspection Date:** {inspection_date} | **Due Date:** {due_date}")
+                    st.write(f"**Inspecting Officer:** {lmo_name}")
+                    if status == "APPROVED & STAMPED":
+                        st.success(f"STATUS: {status}")
+                    else:
+                        st.error(f"STATUS: {status}")
+
+                with c2:
                     st.image(owner_photo, caption="Owner Photo", width=140)
-                if digital_sig:
                     st.image(digital_sig, caption="Digital Signature", width=140)
 
-            with c3:
-                st.image(byte_im, caption="Official Verification QR Code", width=160)
-
-        else:
-            st.error("Please fill in all required fields (Trader Name, GSTIN, Mobile, Serial Number, Officer Name) before submitting.")
+                with c3:
+                    st.image(byte_im, caption="Official Verification QR Code", width=160)
 
 # ---------------------------------------------------------
 # TAB 2: PUBLIC / CONSUMER VERIFICATION
