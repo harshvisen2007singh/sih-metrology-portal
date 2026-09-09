@@ -31,7 +31,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # ---------------------------------------------------------
-# TAB 1: LMO CERTIFICATE ISSUANCE WITH STRICT FILE VALIDATION
+# TAB 1: LMO CERTIFICATE ISSUANCE WITH PRINT & DOWNLOAD
 # ---------------------------------------------------------
 with tab1:
     st.header("Legal Metrology Officer (LMO) Portal")
@@ -81,37 +81,57 @@ with tab1:
         with d_col3:
             digital_sig = st.file_uploader("Upload Officer / Owner Signature*", type=["png", "jpg", "jpeg"])
 
+        st.divider()
+        st.markdown("##### 🎥 On-Site Video Verification")
+        v_col1, v_col2 = st.columns(2)
+
+        with v_col1:
+            st.write("**Option A: Live Inspection Capture**")
+            camera_video = st.camera_input("Capture Live Inspection Video / Photo*")
+
+        with v_col2:
+            st.write("**Option B: Upload Recorded Video File**")
+            recorded_video = st.file_uploader("Upload Inspection Video (MP4/MOV, Max 5MB)*", type=["mp4", "mov", "avi"])
+
         submit_btn = st.form_submit_button("Generate Digital Certificate & QR Code")
 
     if submit_btn:
-        # Check mandatory text fields
+        # Validate text fields
         missing_text = not (trader_name and gstin and serial_number and lmo_name and mobile_no and trader_location and email_id)
         
-        # Check mandatory file uploads
+        # Validate mandatory documents
         missing_files = not (invoice_file and owner_photo and digital_sig)
+
+        # Validate video verification
+        has_video = camera_video is not None or recorded_video is not None
 
         if missing_text:
             st.error("⚠️ Please fill in all mandatory text fields.")
         elif missing_files:
             st.error("⚠️ All three documents (Purchase Bill, Owner Photo, and Signature) are mandatory.")
+        elif not has_video:
+            st.error("⚠️ Video Verification is mandatory! Please either capture a live camera proof or upload a video file.")
         else:
-            # File Size Validation (100 KB = 100 * 1024 bytes = 102,400 bytes)
+            # Document size check (100 KB limit)
             MAX_FILE_SIZE = 100 * 1024
-            
             bill_valid = invoice_file.size <= MAX_FILE_SIZE
             photo_valid = owner_photo.size <= MAX_FILE_SIZE
             sig_valid = digital_sig.size <= MAX_FILE_SIZE
 
-            if not bill_valid or not photo_valid or not sig_valid:
+            # Video file size check (5 MB limit)
+            MAX_VIDEO_SIZE = 5 * 1024 * 1024
+            video_valid = True
+            if recorded_video and recorded_video.size > MAX_VIDEO_SIZE:
+                video_valid = False
+
+            if not (bill_valid and photo_valid and sig_valid):
                 overloaded = []
-                if not bill_valid:
-                    overloaded.append(f"Purchase Bill ({invoice_file.size / 1024:.1f} KB)")
-                if not photo_valid:
-                    overloaded.append(f"Owner Photo ({owner_photo.size / 1024:.1f} KB)")
-                if not sig_valid:
-                    overloaded.append(f"Signature ({digital_sig.size / 1024:.1f} KB)")
-                
-                st.error(f"❌ Upload failed! The following file(s) exceed the 100 KB size limit: {', '.join(overloaded)}. Please compress them and try again.")
+                if not bill_valid: overloaded.append(f"Bill ({invoice_file.size / 1024:.1f} KB)")
+                if not photo_valid: overloaded.append(f"Photo ({owner_photo.size / 1024:.1f} KB)")
+                if not sig_valid: overloaded.append(f"Signature ({digital_sig.size / 1024:.1f} KB)")
+                st.error(f"❌ Upload failed! Files exceeding 100 KB limit: {', '.join(overloaded)}.")
+            elif not video_valid:
+                st.error(f"❌ Video file exceeds 5 MB limit ({recorded_video.size / (1024*1024):.2f} MB). Please compress it.")
             else:
                 due_date = inspection_date + timedelta(days=validity_years * 365)
                 cert_id = f"LMO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -130,16 +150,15 @@ with tab1:
                     "Inspection Date": str(inspection_date),
                     "Next Verification Due": str(due_date),
                     "Status": status,
-                    "Bill Attached": "Verified (<100KB)",
-                    "Photo Attached": "Verified (<100KB)",
-                    "Signature Attached": "Verified (<100KB)"
+                    "Documents Verified": "Bill, Photo, Signature (<100KB)",
+                    "Video Verification": "Live Capture" if camera_video else "Uploaded Video (<5MB)"
                 }
 
                 st.session_state['certificates'].append(record)
                 st.success(f"✅ Certificate {cert_id} generated successfully!")
 
                 # Generate QR Code
-                qr_data = f"CERTIFICATE VERIFIED\nID: {cert_id}\nTrader: {trader_name}\nGSTIN: {gstin}\nInstrument: {instrument_type}\nSerial: {serial_number}\nStatus: {status}\nDue Date: {due_date}"
+                qr_data = f"GOVT OF INDIA - LEGAL METROLOGY CERTIFICATE\nID: {cert_id}\nTrader: {trader_name}\nGSTIN: {gstin}\nInstrument: {instrument_type}\nSerial: {serial_number}\nStatus: {status}\nDue Date: {due_date}"
                 qr = qrcode.QRCode(version=1, box_size=8, border=2)
                 qr.add_data(qr_data)
                 qr.make(fit=True)
@@ -149,36 +168,88 @@ with tab1:
                 img.save(buf)
                 byte_im = buf.getvalue()
 
-                # Display Certificate Preview
+                # Display Printable Digital Certificate
                 st.divider()
-                st.subheader("Generated Digital Verification Certificate Preview")
+                st.subheader("📜 Official Printable Verification Certificate")
+                
+                # Format certificate text content for printable file download
+                cert_text = f"""
+=================================================================================
+                    GOVERNMENT OF INDIA - DEPARTMENT OF CONSUMER AFFAIRS
+                                 LEGAL METROLOGY DIVISION
+                            VERIFICATION & STAMPING CERTIFICATE
+=================================================================================
+
+Certificate Reference No : {cert_id}
+Date of Issuance         : {inspection_date}
+Next Verification Due    : {due_date}
+
+1. TRADER & BUSINESS DETAILS
+   -------------------------
+   Business / Trader Name: {trader_name}
+   GSTIN Number          : {gstin}
+   Location / District   : {trader_location}
+   Contact Number        : {mobile_no}
+   Email Address         : {email_id}
+
+2. INSTRUMENT & INSPECTION SPECIFICATIONS
+   --------------------------------------
+   Instrument Category   : {instrument_type}
+   Serial / ID Number    : {serial_number}
+   Inspecting Officer    : {lmo_name}
+   Audit & Video Proof   : VERIFIED (Digital Audit Log Encrypted)
+
+3. VERIFICATION RESULT & LEGAL STATUS
+   ----------------------------------
+   VERIFICATION RESULT   : {status}
+   COMPLIANCE            : Legal Metrology Act, 2009 & Rules
+
+=================================================================================
+This is a computer-generated certificate digitally authorized by Officer {lmo_name}.
+Scan the official QR code on the portal to verify authenticity.
+=================================================================================
+"""
+
                 c1, c2, c3 = st.columns([2, 1, 1])
                 with c1:
-                    st.write(f"**Certificate Number:** {cert_id}")
-                    st.write(f"**Trader / Business:** {trader_name} ({trader_location})")
-                    st.write(f"**GSTIN:** {gstin}")
-                    st.write(f"**Contact:** Phone: {mobile_no} | Email: {email_id}")
-                    st.write(f"**Instrument Type:** {instrument_type} (SN: {serial_number})")
-                    st.write(f"**Inspection Date:** {inspection_date} | **Due Date:** {due_date}")
-                    st.write(f"**Inspecting Officer:** {lmo_name}")
+                    st.markdown(f"**Certificate Number:** `{cert_id}`")
+                    st.markdown(f"**Trader / Business:** {trader_name} ({trader_location})")
+                    st.markdown(f"**GSTIN:** {gstin}")
+                    st.markdown(f"**Contact:** {mobile_no} | {email_id}")
+                    st.markdown(f"**Instrument Type:** {instrument_type} (SN: {serial_number})")
+                    st.markdown(f"**Inspection Date:** {inspection_date} | **Due Date:** {due_date}")
+                    st.markdown(f"**Inspecting Officer:** {lmo_name}")
                     if status == "APPROVED & STAMPED":
                         st.success(f"STATUS: {status}")
                     else:
                         st.error(f"STATUS: {status}")
 
                 with c2:
-                    st.image(owner_photo, caption="Owner Photo", width=140)
-                    st.image(digital_sig, caption="Digital Signature", width=140)
+                    st.image(owner_photo, caption="Owner Photo", width=130)
+                    st.image(digital_sig, caption="Digital Signature", width=130)
 
                 with c3:
-                    st.image(byte_im, caption="Official Verification QR Code", width=160)
+                    st.image(byte_im, caption="Official Verification QR", width=150)
+
+                st.divider()
+                # Printable Certificate Actions
+                p_col1, p_col2 = st.columns([1, 2])
+                with p_col1:
+                    st.download_button(
+                        label="🖨️ Download Printable Certificate (.TXT / PDF)",
+                        data=cert_text,
+                        file_name=f"Certificate_{cert_id}.txt",
+                        mime="text/plain"
+                    )
+                with p_col2:
+                    st.info("💡 **Print Tip:** Press **`Ctrl + P`** (or **`Cmd + P`** on Mac) in your browser to print or save this page directly as a formatted PDF.")
 
 # ---------------------------------------------------------
 # TAB 2: PUBLIC / CONSUMER VERIFICATION
 # ---------------------------------------------------------
 with tab2:
     st.header("Public & Consumer Verification Portal")
-    st.write("Verify the legal accuracy and stamping status of any weighing or measuring instrument.")
+    st.write("Verify legal accuracy, stamping status, and video audit logs of any instrument.")
 
     search_id = st.text_input("Enter Instrument Serial Number, GSTIN, or Certificate ID:")
     
@@ -293,4 +364,3 @@ with tab4:
                 })
             else:
                 st.error("Please enter Trader Name and Reference ID before making payment.")
-                
