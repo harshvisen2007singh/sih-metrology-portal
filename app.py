@@ -31,7 +31,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # ---------------------------------------------------------
-# TAB 1: LMO CERTIFICATE ISSUANCE
+# TAB 1: LMO CERTIFICATE ISSUANCE (DOCUMENTS OPTIONAL)
 # ---------------------------------------------------------
 with tab1:
     st.header("Legal Metrology Officer (LMO) Portal")
@@ -71,47 +71,38 @@ with tab1:
             status = st.radio("Verification Result", ["APPROVED & STAMPED", "REJECTED / DEFECTIVE"], horizontal=True)
 
         st.divider()
-        st.markdown("##### 📁 Mandatory Document Uploads (Max Size: 100 KB per file)")
+        st.markdown("##### 📁 Optional Document Uploads (Max Size: 100 KB per file)")
         d_col1, d_col2, d_col3 = st.columns(3)
         
         with d_col1:
-            invoice_file = st.file_uploader("Upload Purchase Bill / Invoice*", type=["pdf", "png", "jpg", "jpeg"])
+            invoice_file = st.file_uploader("Upload Purchase Bill / Invoice (Optional)", type=["pdf", "png", "jpg", "jpeg"])
         with d_col2:
-            owner_photo = st.file_uploader("Upload Owner / Business Photo*", type=["png", "jpg", "jpeg"])
+            owner_photo = st.file_uploader("Upload Owner / Business Photo (Optional)", type=["png", "jpg", "jpeg"])
         with d_col3:
-            digital_sig = st.file_uploader("Upload Officer / Owner Signature*", type=["png", "jpg", "jpeg"])
+            digital_sig = st.file_uploader("Upload Officer / Owner Signature (Optional)", type=["png", "jpg", "jpeg"])
 
         submit_btn = st.form_submit_button("Generate Digital Certificate & QR Code")
 
     if submit_btn:
-        # Check mandatory text fields
+        # Check ONLY mandatory text fields
         missing_text = not (trader_name and gstin and serial_number and lmo_name and mobile_no and trader_location and email_id)
-        
-        # Check mandatory file uploads
-        missing_files = not (invoice_file and owner_photo and digital_sig)
 
         if missing_text:
-            st.error("⚠️ Please fill in all mandatory text fields.")
-        elif missing_files:
-            st.error("⚠️ All three documents (Purchase Bill, Owner Photo, and Signature) are mandatory.")
+            st.error("⚠️ Please fill in all mandatory text fields marked with *.")
         else:
-            # File Size Validation (100 KB = 100 * 1024 bytes)
+            # Check file size ONLY if a file is actually uploaded
             MAX_FILE_SIZE = 100 * 1024
+            overloaded = []
             
-            bill_valid = invoice_file.size <= MAX_FILE_SIZE
-            photo_valid = owner_photo.size <= MAX_FILE_SIZE
-            sig_valid = digital_sig.size <= MAX_FILE_SIZE
+            if invoice_file and invoice_file.size > MAX_FILE_SIZE:
+                overloaded.append(f"Purchase Bill ({invoice_file.size / 1024:.1f} KB)")
+            if owner_photo and owner_photo.size > MAX_FILE_SIZE:
+                overloaded.append(f"Owner Photo ({owner_photo.size / 1024:.1f} KB)")
+            if digital_sig and digital_sig.size > MAX_FILE_SIZE:
+                overloaded.append(f"Signature ({digital_sig.size / 1024:.1f} KB)")
 
-            if not bill_valid or not photo_valid or not sig_valid:
-                overloaded = []
-                if not bill_valid:
-                    overloaded.append(f"Purchase Bill ({invoice_file.size / 1024:.1f} KB)")
-                if not photo_valid:
-                    overloaded.append(f"Owner Photo ({owner_photo.size / 1024:.1f} KB)")
-                if not sig_valid:
-                    overloaded.append(f"Signature ({digital_sig.size / 1024:.1f} KB)")
-                
-                st.error(f"❌ Upload failed! The following file(s) exceed the 100 KB size limit: {', '.join(overloaded)}. Please compress them and try again.")
+            if overloaded:
+                st.error(f"❌ File size error: The following file(s) exceed 100 KB limit: {', '.join(overloaded)}. Please compress them.")
             else:
                 due_date = inspection_date + timedelta(days=validity_years * 365)
                 cert_id = f"LMO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -130,7 +121,9 @@ with tab1:
                     "Inspection Date": str(inspection_date),
                     "Next Verification Due": str(due_date),
                     "Status": status,
-                    "Documents Verified": "Bill, Photo, Signature (<100KB)"
+                    "Bill Attached": "Yes" if invoice_file else "No",
+                    "Photo Attached": "Yes" if owner_photo else "No",
+                    "Signature Attached": "Yes" if digital_sig else "No"
                 }
 
                 st.session_state['certificates'].append(record)
@@ -202,8 +195,10 @@ Scan the official QR code on the portal to verify authenticity.
                         st.error(f"STATUS: {status}")
 
                 with c2:
-                    st.image(owner_photo, caption="Owner Photo", width=130)
-                    st.image(digital_sig, caption="Digital Signature", width=130)
+                    if owner_photo:
+                        st.image(owner_photo, caption="Owner Photo", width=130)
+                    if digital_sig:
+                        st.image(digital_sig, caption="Digital Signature", width=130)
 
                 with c3:
                     st.image(byte_im, caption="Official Verification QR", width=150)
